@@ -1,0 +1,9 @@
+# Valheim saves are binary; never convert line endings or try to merge them.
+*.chunk  binary
+*.chunks binary
+*.db2    binary
+*.fwl2   binary
+*.ok     binary
+*.db     binary
+*.fwl    binary
+*.old    binary

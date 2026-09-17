@@ -1,0 +1,11 @@
+{
+    "playerName": "your-name",
+    "repoPath": "C:\\Users\\you\\repos\\velleim",
+    "remote": "origin",
+    "branch": "master",
+    "repoWorldsDir": "",
+    "worlds": ["Vagidi"],
+    "steamWorldsPath": "C:\\Program Files (x86)\\Steam\\userdata\\<your-steam-id>\\892970\\remote\\worlds",
+    "localBackupPath": "",
+    "keepLocalBackups": 10
+}

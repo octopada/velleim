@@ -1,0 +1,3 @@
+# Per-player settings for valheim-sync
+valheim-sync.config.json
+*.valheim-sync-tmp/
