@@ -115,21 +115,33 @@ function Assert-ValheimClosed {
     }
 }
 
-# Replace $to with an exact copy of $from, then check names and sizes match.
+# Minimap caches that local (non-cloud) worlds keep next to the save. The game rebuilds
+# them, so they are never copied, but an existing copy at the destination is kept.
+$CacheFilePattern = 'cacheMinimap*'
+
+function Get-SaveFiles([string]$dir) {
+    Get-ChildItem -LiteralPath $dir -File | Where-Object { $_.Name -notlike $CacheFilePattern }
+}
+
+# Replace the save files in $to with an exact copy of those in $from, then check names and
+# sizes match.
 function Copy-WorldFolder([string]$from, [string]$to) {
     $staging = "$to.valheim-sync-tmp"
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
     New-Item -ItemType Directory -Path $staging | Out-Null
-    Get-ChildItem -LiteralPath $from | Copy-Item -Destination $staging -Recurse -Force
+    Get-SaveFiles $from | Copy-Item -Destination $staging -Force
 
-    $expected = Get-ChildItem -LiteralPath $from -Recurse -File | ForEach-Object { "$($_.FullName.Substring($from.Length))|$($_.Length)" }
-    $actual = Get-ChildItem -LiteralPath $staging -Recurse -File | ForEach-Object { "$($_.FullName.Substring($staging.Length))|$($_.Length)" }
+    $expected = Get-SaveFiles $from | ForEach-Object { "$($_.Name)|$($_.Length)" }
+    $actual = Get-SaveFiles $staging | ForEach-Object { "$($_.Name)|$($_.Length)" }
     if (Compare-Object @($expected) @($actual)) {
         Remove-Item -LiteralPath $staging -Recurse -Force
         throw "Copy of '$from' did not verify; nothing was replaced."
     }
 
-    if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force }
+    if (Test-Path -LiteralPath $to) {
+        Get-ChildItem -LiteralPath $to -File -Filter $CacheFilePattern | Move-Item -Destination $staging
+        Remove-Item -LiteralPath $to -Recurse -Force
+    }
     Rename-Item -LiteralPath $staging -NewName (Split-Path $to -Leaf)
 }
 
