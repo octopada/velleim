@@ -1,3 +1,6 @@
 # Per-player settings for valheim-sync
 valheim-sync.config.json
 *.valheim-sync-tmp/
+
+# Valheim rebuilds these minimap caches; no need to back them up
+cacheMinimap*
