@@ -19,6 +19,8 @@
     .\valheim-sync.cmd play
 .EXAMPLE
     .\valheim-sync.cmd pull -Force
+.EXAMPLE
+    .\valheim-sync.cmd push -Message "built the smelter down by the docks"
 #>
 [CmdletBinding()]
 param(
@@ -29,6 +31,10 @@ param(
     # Defaults to valheim-sync.config.json next to this script.
     [string]$ConfigPath,
 
+    # Commit message for push and play. Without it, one naming the player, the worlds
+    # pushed and the time is written for you.
+    [string]$Message,
+
     # Skip the save-generation safety checks.
     [switch]$Force
 )
@@ -36,6 +42,7 @@ param(
 $ErrorActionPreference = 'Stop'
 # $PSScriptRoot isn't set yet inside param() defaults on Windows PowerShell 5.1.
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'valheim-sync.config.json' }
+if ($Message -and $Command -notin 'push', 'play') { throw "-Message only applies to 'push' and 'play'." }
 $ValheimAppId = 892970
 
 # ---------------------------------------------------------------- config
@@ -250,7 +257,9 @@ function Invoke-Push {
         & git -C $cfg.repoPath diff --cached --quiet
         if ($LASTEXITCODE -ne 0) {
             $summary = ($changed.Keys | Sort-Object | ForEach-Object { "$_ save $($changed[$_])" }) -join ', '
-            Invoke-Git commit -m "$($cfg.playerName): $summary ($(Get-Date -Format 'yyyy-MM-dd HH:mm'))" | Out-Null
+            $commitMessage = $Message
+            if (-not $commitMessage) { $commitMessage = "$($cfg.playerName): $summary ($(Get-Date -Format 'yyyy-MM-dd HH:mm'))" }
+            Invoke-Git commit -m $commitMessage | Out-Null
         }
     }
 
