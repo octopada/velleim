@@ -122,6 +122,45 @@ function Assert-ValheimClosed {
     }
 }
 
+# True when the local world holds exactly the chunk files of the save it was pulled from,
+# so its higher generation is only the game having saved on load or exit. Valheim renames a
+# chunk file whenever it rewrites it, so matching names and contents means nothing changed
+# in the world itself. Returns false whenever that can't be established.
+function Test-NoLocalWorldChanges([string]$world, $baseGen, [string]$steamDir) {
+    if ($null -eq $baseGen) { return $false }
+    $relDir = $world
+    if ($cfg.repoWorldsDir) { $relDir = "$($cfg.repoWorldsDir)/$world" }
+    $relDir = ($relDir -replace '\\', '/').Trim('/')
+
+    # Newest commit whose tree still holds the save we pulled from. Asking git log for the
+    # last commit touching that path would instead name the commit that replaced it.
+    $ErrorActionPreference = 'Continue'
+    $commit = $null
+    foreach ($candidate in Invoke-Git log --format=%H -n 100) {
+        & git -C $cfg.repoPath cat-file -e "${candidate}:$relDir/_main.$baseGen.ok" 2>$null
+        if ($LASTEXITCODE -eq 0) { $commit = $candidate; break }
+    }
+    if (-not $commit) { return $false }
+
+    $tracked = @{}
+    foreach ($line in Invoke-Git ls-tree -r $commit '--' $relDir) {
+        if ($line -match '^\S+\s+blob\s+(\S+)\s+(.+)$') {
+            $name = Split-Path $Matches[2] -Leaf
+            if ($name -notlike '_main.*' -and $name -notlike $CacheFilePattern) { $tracked[$name] = $Matches[1] }
+        }
+    }
+    if ($tracked.Count -eq 0) { return $false }
+
+    $local = @(Get-SaveFiles $steamDir | Where-Object { $_.Name -notlike '_main.*' })
+    if ($local.Count -ne $tracked.Count) { return $false }
+    foreach ($file in $local) {
+        if (-not $tracked.ContainsKey($file.Name)) { return $false }
+        $hash = (Invoke-Git hash-object --no-filters '--' $file.FullName | Select-Object -First 1)
+        if ($hash -ne $tracked[$file.Name]) { return $false }
+    }
+    $true
+}
+
 # Minimap caches that local (non-cloud) worlds keep next to the save. The game rebuilds
 # them, so they are never copied, but an existing copy at the destination is kept.
 $CacheFilePattern = 'cacheMinimap*'
@@ -209,8 +248,13 @@ function Invoke-Pull {
         # Steam has saves the repo doesn't have: progress you haven't pushed yet.
         $unpushed = ($steamGen -gt $repoGen) -or ($null -ne $baseGen -and $steamGen -ge 0 -and $steamGen -ne $baseGen)
         if ($unpushed -and -not $Force) {
-            Write-Warning "$world in Steam (save $steamGen) has progress that isn't in the repo (save $repoGen). Not overwriting it. Run 'push' to upload it, or 'pull -Force' to replace it with the repo's save (yours is backed up first)."
-            continue
+            if (Test-NoLocalWorldChanges $world $baseGen $steamDir) {
+                Write-Host "${world}: your save $steamGen only bumped the save counter, with no world changes, so the repo's save is safe to take."
+            }
+            else {
+                Write-Warning "$world in Steam (save $steamGen) has progress that isn't in the repo (save $repoGen). Not overwriting it. Run 'push' to upload it, or 'pull -Force' to replace it with the repo's save (yours is backed up first)."
+                continue
+            }
         }
 
         Backup-SteamWorld $world
@@ -249,7 +293,7 @@ function Invoke-Push {
         }
 
         Copy-WorldFolder $steamDir $repoDir
-        Invoke-Git add -A -- $repoDir | Out-Null
+        Invoke-Git add -A '--' $repoDir | Out-Null
         $changed[$world] = $steamGen
     }
 
